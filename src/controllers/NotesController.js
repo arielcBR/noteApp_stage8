@@ -30,7 +30,70 @@ class NotesController {
 
         await knex("tags").insert(tagsInsert)
 
-        response.json({message: "nota criada!"})
+        response.json({ message: "nota criada" })
+    }
+
+    async show(request, response) {
+        const { id } = request.params;
+        const notes = await knex("notes").where({ id }).first();
+        const tags = await knex("tags").where({ note_id: id }).orderBy("name");
+        const links = await knex("links").where({note_id: id}).orderBy("created_at")
+
+        if (!notes)
+            return response.status(400).json({ message: "Nota não existe" });
+        
+        return response.json({
+            ...notes,
+            tags,
+            links
+        });
+    }
+
+    async index(request, response) {
+        const { title, user_id, tags } = request.query;
+        
+        let notes;
+
+        if (tags) {
+            const filterTags = tags.split(",").map(tag => tag.trim());
+            notes = await knex("tags")
+                .select([
+                    "notes.id",
+                    "notes.title",
+                    "notes.user_id"
+                ])
+                .where("notes.user_id", user_id)
+                .whereLike("notes.title", `%${title}%`)
+                .whereIn("name", filterTags)
+                .innerJoin("notes", "notes.id", "tags.note_id")
+        }
+        else {
+            notes = await knex("notes")
+                .where({ user_id })
+                .whereLike(title, `%${title}%`)
+                .orderBy("title");
+        }
+            
+        const userTags = await knex("tags").where({ user_id });
+        const notesWithTags = notes.map(note => {
+            const noteTags = userTags.filter(tag => tag.note_id == note.id); 
+            return {
+                ...note,
+                tags: noteTags
+            }
+        });
+
+        return response.json({notesWithTags});
+    }
+
+    async delete(request, response) {
+        const { id } = request.params;
+        const notes = await knex("notes").where({ id }).delete();
+
+        if (!notes)
+            return response.status(400).json({ message: "Nota não existe" });
+        
+        return response.json({message: "Nota deletada"});
     }
 }
 
